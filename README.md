@@ -12,4 +12,4 @@ achat low bandwidth command line voice chat using alsa and libopus.
 				./achat 1122
 
 			Client:
-				./achat 127.0.0.1 1122 default default
+				./achat 127.0.0.1 1122 plug:hw:2 plug:hw:2
