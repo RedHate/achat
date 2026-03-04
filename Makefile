@@ -1,3 +1,6 @@
+###############
+# ultros 2026
+###############
 
 TARGET = achat
 
@@ -12,7 +15,7 @@ clean:
 
 %.o: %.c
 	@printf "\033[1;35m[CC]\033[0m $(notdir $(basename $<)).o\n" 
-	@$(CC) $(WARNINGS) -c $< $(CFLAGS) -o $(basename $<).o
+	@$(CC) -c $< -o $(basename $<).o
 
 $(TARGET): $(OBJS)
 	@printf "\033[1;36m[CC]\033[0m $(TARGET)\n" 
