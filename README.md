@@ -1,8 +1,6 @@
 
-achat with opus 4kHz encoding / decoding
-
- Probably not the best way to create a voice chat, i pretty much broke all the rules lol
- Still need to convert tcp stuff to udp but is in a decent working state.
+alsa-voice 8 bit voice chat
+ probably not the best way to create a voice chat, i pretty much broke all the rules lol
 
 	Usage:
 		Server:

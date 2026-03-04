@@ -1,4 +1,3 @@
-/* ----------------- OPUS -----------------*/
 
 #include <opus/opus.h>
 #include <stdio.h>
@@ -41,16 +40,16 @@ int init_opus() {
 }
 
 // Opus decoder encoder shutdown
-void opus_shutdown(){
+void deinit_opus(){
 	opus_encoder_destroy(encoder);
 	opus_decoder_destroy(decoder);
 }
 
 // Encode a pcm stream to opus
-int opus_encode_buffer( const opus_int16 *pcm, int frame_size, unsigned char *data, opus_int32 max_data_bytes){
+int opus_encode_buffer( const opus_int16 *pcm_buf, int frame_size, unsigned char *opus_buf, opus_int32 max_size){
     
     //unsigned char opus_data[4000]; // buffer for encoded data
-    int bytes_encoded = opus_encode(encoder, pcm, frame_size, data, max_data_bytes);
+    int bytes_encoded = opus_encode(encoder, pcm_buf, frame_size, opus_buf, max_size);
     if (bytes_encoded < 0) {
         fprintf(stderr, "Encode failed: %s\n", opus_strerror(bytes_encoded));
         return 1;
@@ -62,9 +61,9 @@ int opus_encode_buffer( const opus_int16 *pcm, int frame_size, unsigned char *da
 }
 
 // Decode an opus stream to pcm
-int opus_decode_buffer(const unsigned char *data, opus_int32 len, opus_int16 *pcm, int frame_size){
+int opus_decode_buffer(const unsigned char *opus_buf, opus_int32 len, opus_int16 *pcm_buf, int frame_size){
 
-	int bytes_deccoded = opus_decode(decoder, data, len, pcm, frame_size, 0);
+	int bytes_deccoded = opus_decode(decoder, opus_buf, len, pcm_buf, frame_size, 0);
 	if (bytes_deccoded < 0) {
 		fprintf(stderr, "Decode failed: %s\n", opus_strerror(bytes_deccoded));
 		return 1;

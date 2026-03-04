@@ -4,12 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stddef.h>
-
-// XOR related definitions
-#define XOR_KEY_LEN      96
-#define XOR_KEY_ARRAY    4
-#define XOR_FORWARD      0
-#define XOR_BACKWARD     1
+#include "achat-xor.h"
 
 uint32_t keys[XOR_KEY_ARRAY][XOR_KEY_LEN] = {
 	{
@@ -515,25 +510,25 @@ void xor4x(uint8_t *buffer, size_t size) {
 }
 
 // This adds a lot of noise to our signal. good.
-uint32_t shuffle32(uint32_t block, int enc){
+uint32_t shuffle32(uint32_t block, int mode){
 	uint32_t a = (block >> 0)  & 0xFF,
 			 b = (block >> 8)  & 0xFF,
 			 c = (block >> 16) & 0xFF,
 			 d = (block >> 24) & 0xFF;
-	if(enc)
+	if(mode)
 		return (c<<0)|(a<<8)|(d<<16)|(b<<24);
 	else
 		return (b<<0)|(d<<8)|(a<<16)|(c<<24);
 }
 
 // Directional byte flipping function
-void bytefliparray(uint8_t *buffer, uint32_t size, int enc){
+void bytefliparray(uint8_t *buffer, uint32_t size, int mode){
 	int c;
 	for(c=0;c<16;c++){
 		int i;
 		for(i=0;i<size;i+=4){
 			// Shuffle and re-assign 4 bytes of the array
-			*((uint32_t*)&buffer[i]) = shuffle32(*((uint32_t*)&buffer[i]), enc);
+			*((uint32_t*)&buffer[i]) = shuffle32(*((uint32_t*)&buffer[i]), mode);
 		}
 	}
 }

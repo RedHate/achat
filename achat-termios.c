@@ -8,16 +8,19 @@
 
 // Local Var
 struct termios term;
+struct termios term_orig;
 
 // Restore original terminal properties
 void restore_terminal(void) {
-	tcsetattr(STDIN_FILENO,TCSANOW,&term);
+	tcsetattr(STDIN_FILENO,TCSANOW,&term_orig);
 }
 
 // Set terminal to non-blocking input
 void enable_nonblocking_input(void) {
     // Get attributes
     tcgetattr(STDIN_FILENO, &term);
+	// Get attributes
+    tcgetattr(STDIN_FILENO, &term_orig);
     // Set exit
     atexit(restore_terminal);
     // Set Flags
