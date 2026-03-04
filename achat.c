@@ -573,10 +573,12 @@ int client(int argc, char *argv[]) {
 					
 				}
 				else if (n > 0 && ch == '-') {
-					mic_gain -= 0.1f;
+					if(mic_gain > 0.0f)
+						mic_gain -= 0.1f;
 					printf("mic_gain: %f\n", mic_gain);
 				}
 				else if (n > 0 && ch == '=') {
+					if(mic_gain < 3.0f)
 					mic_gain += 0.1f;
 					printf("mic_gain: %f\n", mic_gain);
 				}
