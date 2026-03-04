@@ -1,17 +1,15 @@
-
-alsa-voice 8 bit voice chat
- probably not the best way to create a voice chat, i pretty much broke all the rules lol
+achat low bandwidth command line voice chat using alsa and libopus.
 
 	Usage:
 		Server:
-			./achat [listener_port] [capture device] [playback device]
+			./achat [listener_port]
 
 		Client:
 			./achat [server_ip] [port] [capture device] [playback device]
 
 		Example:
 			Server:
-				./achat 1122 default default
+				./achat 1122
 
 			Client:
 				./achat 127.0.0.1 1122 default default
