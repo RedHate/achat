@@ -22,20 +22,25 @@
     
 */
 
-/**
-  * Debug print buffer byte for byte as hex
-  * 
-  * @param buffer    - buffer to be printed
-  * @param size      - size in bytes
-  */
-void debug_print_hex(uint8_t *buffer, uint32_t size);
+#include "achat-cdefs.h"
+
+// Microphone
+typedef struct micinfo{
+	float  gain;  // controlled with ',' and '.' keys
+	int    busy;     // var for microphone ptt lockout when receiving
+	int    monitor;     // var for toggling microphone monitor with 'm'
+	int    key_up;     // toggle with spacebar
+	time_t key_up_start;     // used to count time for mic timeout
+	time_t busy_start;       // timer for microphone ptt lockout when receiving
+}micinfo;
+
 
 /**
-  * Draw a waterfall audio wave effect to stdout
-  * 
-  * @param buffer     - buffer to be printed
-  * @param size       - size in bytes
-  * @param color_mode - 0 or 1
-  */
-void audio_visualiser(short *buffer, size_t size, int color_mode);
+* not implemented yet, still debating if i want usernames.
+*/
+typedef struct payload{
+	char     *username;  // username buffer 16 byte names max
+	uint8_t  opus[FRAME_SIZE];        // opus data
+	uint32_t opus_size;               // size of opus data in bytes
+}payload;
 

@@ -13,7 +13,7 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with Foobar; if not, write to the Free Software
+    along with achat; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
@@ -44,11 +44,15 @@ int init_opus() {
     }
 
     // Set the lowest acceptable bitrate for high compression
+    opus_encoder_ctl(encoder, OPUS_SET_APPLICATION(OPUS_APPLICATION_VOIP));
+    opus_encoder_ctl(encoder, OPUS_SET_BITRATE(8000)); // mono voice
+    opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+    opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10)); // optional, max compression efficiency
     opus_encoder_ctl(encoder, OPUS_SET_VBR(1));
 	opus_encoder_ctl(encoder, OPUS_SET_VBR_CONSTRAINT(1));
-    opus_encoder_ctl(encoder, OPUS_SET_BITRATE(8000)); // mono voice
-    opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10)); // optional, max compression efficiency
-	opus_encoder_ctl(encoder, OPUS_SET_SIGNAL(OPUS_APPLICATION_VOIP));
+	
+	// probably dont need this (seems to be set by the above voip option)
+	opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_NARROWBAND));
 
 	// DECODER
 	// Create Opus decoder
@@ -69,7 +73,7 @@ void deinit_opus(){
 }
 
 // Encode a pcm stream to opus
-int opus_encode_buffer( const opus_int16 *pcm_buf, int frame_size, unsigned char *opus_buf, opus_int32 max_size){
+int opus_encode_buffer(const short *pcm_buf, int frame_size, uint8_t *opus_buf, uint32_t max_size){
     
     //unsigned char opus_data[4000]; // buffer for encoded data
     int bytes_encoded = opus_encode(encoder, pcm_buf, frame_size, opus_buf, max_size);
@@ -84,7 +88,7 @@ int opus_encode_buffer( const opus_int16 *pcm_buf, int frame_size, unsigned char
 }
 
 // Decode an opus stream to pcm
-int opus_decode_buffer(const unsigned char *opus_buf, opus_int32 len, opus_int16 *pcm_buf, int frame_size){
+int opus_decode_buffer(const uint8_t *opus_buf, uint32_t len, short *pcm_buf, int frame_size){
 
 	int bytes_deccoded = opus_decode(decoder, opus_buf, len, pcm_buf, frame_size, 0);
 	if (bytes_deccoded < 0) {

@@ -13,7 +13,7 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with Foobar; if not, write to the Free Software
+    along with achat; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
@@ -27,14 +27,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-/* ----------------- TERM -----------------*/
-
 // Local Var
 struct termios term;
 struct termios term_orig;
 
 // Restore original terminal properties
 void restore_terminal(void) {
+	// Set teminal properties from back up only after enable_nonblocking_input has been called
 	tcsetattr(STDIN_FILENO,TCSANOW,&term_orig);
 }
 
@@ -42,7 +41,7 @@ void restore_terminal(void) {
 void enable_nonblocking_input(void) {
     // Get attributes
     tcgetattr(STDIN_FILENO, &term);
-	// Get attributes
+	// Get attributes (backup)
     tcgetattr(STDIN_FILENO, &term_orig);
     // Set exit
     atexit(restore_terminal);

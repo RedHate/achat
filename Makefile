@@ -4,11 +4,20 @@
 
 TARGET = achat
 
-OBJS = achat-xor.o achat-debug.o achat-opus.o achat-termios.o achat.o
+OBJS = achat-xor.o achat-debug.o achat-filters.o achat-opus.o achat-alsa.o achat-termios.o achat.o
 
-LIBS = -lopus -lasound -lpthread
+LIBS = -lopus -lasound -lpthread -lm
 
-all: $(TARGET)
+all: clean $(TARGET)
+
+server: clean $(TARGET)
+	@./achat 6688
+	
+client-1: clean $(TARGET)
+	@./achat 127.0.0.1 6688 plug:hw:3 plug:hw:0
+
+client-2: clean $(TARGET)
+	@./achat 127.0.0.1 6688 plug:hw:0 plug:hw:3
 
 clean:
 	@rm -rf achat *.o

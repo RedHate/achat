@@ -13,7 +13,7 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with Foobar; if not, write to the Free Software
+    along with achat; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
@@ -25,7 +25,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-void debug_print_buf(uint8_t *buffer, uint32_t size) {
+void debug_print_hex(uint8_t *buffer, uint32_t size) {
 	int c;
 	for(c=0;c<size;c++) {
 		printf("%02hX,", *(uint8_t*)&buffer[c]);
@@ -105,6 +105,5 @@ void audio_visualiser(short *buffer, size_t size, int color_mode) {
 				printf("[%04d]%s%20s |\033[0m\n", *(char*)&byte, (color_mode)? color_strings[2] : color_strings[((int)(~byte/6))/2], visualiser_array[(int)(~byte/8)]);
 		}
 	}
-			
 }
 

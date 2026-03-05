@@ -13,7 +13,7 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with Foobar; if not, write to the Free Software
+    along with achat; if not, write to the Free Software
     Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 
@@ -33,4 +33,4 @@
 #define FRAME_SIZE  960   //libopus expects this or a multiple or division of it
 #define FORMAT      SND_PCM_FORMAT_S16_LE //libopus expects 16bit audio
 #define MIC_TIMEOUT_SECONDS 60
-//#define MAX_CLIENTS  FD_SETSIZE
+

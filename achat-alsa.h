@@ -23,19 +23,27 @@
 */
 
 /**
-  * Debug print buffer byte for byte as hex
+  * Alsa handle init
   * 
-  * @param buffer    - buffer to be printed
-  * @param size      - size in bytes
+  * @param handle - Alsa device handle pointer
+  * @param device - Device name eq: plug:hw:1 or default
+  * @param stream - SND_PCM_STREAM_CAPTURE or SND_PCM_STREAM_PLAYBACK
+  * @param channels - Amount of channels
+  * @return 0 on success, an error if greater than 0.
   */
-void debug_print_hex(uint8_t *buffer, uint32_t size);
+int init_alsa(snd_pcm_t **handle, const char *device, snd_pcm_stream_t stream, uint32_t channels);
 
 /**
-  * Draw a waterfall audio wave effect to stdout
+  * Alsa handle deinit
   * 
-  * @param buffer     - buffer to be printed
-  * @param size       - size in bytes
-  * @param color_mode - 0 or 1
+  * @param handle - Alsa device handle pointer
+  * @return 0 on success, an error if greater than 0.
   */
-void audio_visualiser(short *buffer, size_t size, int color_mode);
+int deinit_alsa(snd_pcm_t **handle);
 
+/**
+  * List all devices
+  * 
+  * @param stream - SND_PCM_STREAM_CAPTURE or SND_PCM_STREAM_PLAYBACK
+  */
+void device_list(snd_pcm_stream_t stream);
