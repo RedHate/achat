@@ -82,6 +82,7 @@
 #include <netinet/tcp.h>
 #include <pthread.h>
 #include <alsa/asoundlib.h>
+#include <math.h>
 
 /* ----------------------------------------*/
 /*             PROJECT HEADERS             */
@@ -135,12 +136,128 @@ void sleep_us(long microseconds) {
 }
 
 /* ----------------------------------------*/
+/*                    WAV                  */
+/* ----------------------------------------*/
+
+// WAV header structure
+typedef struct {
+    char chunkID[4];       // "RIFF"
+    uint32_t chunkSize;    // 36 + Subchunk2Size
+    char format[4];        // "WAVE"
+    char subchunk1ID[4];   // "fmt "
+    uint32_t subchunk1Size;// 16 for PCM
+    uint16_t audioFormat;  // PCM = 1
+    uint16_t numChannels;  // e.g., 1 for mono
+    uint32_t sampleRate;   // e.g., 44100
+    uint32_t byteRate;     // sampleRate * numChannels * bitsPerSample/8
+    uint16_t blockAlign;   // numChannels * bitsPerSample/8
+    uint16_t bitsPerSample;// e.g., 16
+    char subchunk2ID[4];   // "data"
+    uint32_t subchunk2Size;// numSamples * numChannels * bitsPerSample/8
+} WAVHeader;
+
+FILE *recorded_wav;
+
+// Function to save PCM buffer as WAV
+void open_wave_file(const char *filename) {
+    
+    // Set compressor parameters
+    WAVHeader header = {
+		.chunkID = "RIFF",                                         // "RIFF"
+		.chunkSize = 36 + FRAME_SIZE * CHANNELS * sizeof(short) ,  // 36 + Subchunk2Size
+		.format = "WAVE",                                          // "WAVE"
+		.subchunk1ID = "fmt ",                                     // "fmt "
+		.subchunk1Size = 16,                                       // 16 for PCM
+		.audioFormat = 1,                                          // PCM = 1
+		.numChannels = CHANNELS,                                   // e.g., 1 for mono
+		.sampleRate = SAMPLE_RATE,                                 // e.g., 44100
+		.byteRate = SAMPLE_RATE * CHANNELS * sizeof(short) ,       // sampleRate * numChannels * bitsPerSample/8
+		.blockAlign = CHANNELS * sizeof(short) ,                   // numChannels * bitsPerSample/8
+		.bitsPerSample = 16,                                       // e.g., 16
+		.subchunk2ID = "data",                                     // "data"
+		.subchunk2Size  = FRAME_SIZE * CHANNELS * sizeof(short)    // numSamples * numChannels * bitsPerSample/8
+    };
+ 
+    // Write to file
+    recorded_wav = fopen(filename, "wb");
+    if (!recorded_wav) {
+        perror("Failed to open file");
+        return;
+    }
+
+    fwrite(&header, sizeof(WAVHeader), 1, recorded_wav);
+
+}
+
+void write_frame_to_wave_file(const short *buffer){
+	fwrite(buffer, sizeof(short), FRAME_SIZE, recorded_wav);
+}
+
+void close_wave_file(){
+    fclose(recorded_wav);
+}
+
+/* ----------------------------------------*/
 /*                   ALSA                  */
 /* ----------------------------------------*/
 
 // ALSA handles
 snd_pcm_t *capture_handle;
 snd_pcm_t *playback_handle;
+
+int recording = 0;
+int selected_roger_beep = 0;
+
+void roger_beep(short *buffer, uint32_t size, int frequency){
+	
+    // Generate sine wave samples
+    int i;
+    for (i = 0; i < size; i++) {
+        float t = (float)i / SAMPLE_RATE;
+        float amplitude = sin(2 * M_PI * frequency * t);
+        buffer[i] = (short)(amplitude * 32767); // 16-bit PCM
+    }
+    // Low pass filtering
+	low_pass_filter(buffer, size, 0.125f);
+}
+
+void send_roger_beep(int sockfd, int beep_type){
+
+	// buffers
+	uint16_t pcm[FRAME_SIZE];
+	uint8_t opus[FRAME_SIZE];
+
+	// generate tone	
+	int i;
+	for(i = 0; i < 16; i++){	
+	
+		switch(beep_type){
+			case 0:{ /* nada */ }break;
+			case 1:{ roger_beep(pcm, FRAME_SIZE, 100+(100*i));  }break;
+			case 2:{ roger_beep(pcm, FRAME_SIZE, 1900-(100*i)); }break;
+			case 3:{ roger_beep(pcm, FRAME_SIZE, 1000);         }break;
+		}
+		
+		// opus encode
+		int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
+		// Apply XOR
+		xor4x((uint8_t*)opus, bytes_encoded);
+		// Byte flipping
+		bytefliparray((uint8_t*)opus, bytes_encoded, 1);
+		// Send to sock
+		ssize_t s = send(sockfd, opus, bytes_encoded, MSG_NOSIGNAL);
+		if(s < 1){
+			printf("Connection has died.\n");
+			running = 0;
+		} 
+		
+		// write the stream to file
+		if(recording){
+			write_frame_to_wave_file(pcm);
+		}
+		
+	}
+}
 
 /*
  * Still need to seperate these into send / recv only and playback / capture only color threads.
@@ -175,12 +292,18 @@ void* receive_play_audio(void* arg) {
 #endif
 #ifdef _XOR_
 			// Byte flipping
-			bytefliparray((uint8_t*)opus, sizeof(opus), 0);
+			bytefliparray((uint8_t*)opus, r, 0);
 			// Apply XOR
-			xor4x((uint8_t*)opus, sizeof(opus));
+			xor4x((uint8_t*)opus, r);
 #endif
 			// opus decode
-			opus_decode_buffer(opus, r, pcm, FRAME_SIZE);			
+			opus_decode_buffer(opus, r, pcm, FRAME_SIZE);
+			
+			// write the stream to file
+			if(recording){
+				write_frame_to_wave_file(pcm);
+			}
+			
 			// write pcm to sound device
 			ssize_t w = snd_pcm_writei(playback_handle, pcm, FRAME_SIZE);
 			if (w == -EPIPE) {
@@ -239,25 +362,34 @@ void* capture_send_audio(void* arg) {
 			fprintf(stderr, "Error writing PCM to device: %s\n", snd_strerror(r));
 		}
 		else if (r > 0) {
+			
 			// Are we keyed up? and is the mic busy?
-			if((mic.key_up) && (!mic.busy)) {	
+			if((mic.key_up) && (!mic.busy)) {
+				
 				// Check the time 60 second time out
 				if((time(NULL)-mic.key_up_start) < MIC_TIMEOUT_SECONDS) {
-					// Adjust mic gain before modulation
-					int c;
-					for (c = 0; c < sizeof(pcm); c++) {
-						pcm[c] = (short)(pcm[c] * mic.gain);
-					}
-					// i dont really like auto gain. it's adding some echo hiss... need aec for this
-				    //auto_gain(pcm, FRAME_SIZE, (32767/8));
-					// Noise suppression (meh)
-					//noise_suppress(pcm, FRAME_SIZE, 400);
+					
+					// ROFL! this is pricelessly funny but not very good, 0 - 1.0f
+					// pitch_shift(pcm, FRAME_SIZE, 0.75f);
+					
+					// pre-amps the initial signal
+					//manual_gain(pcm, FRAME_SIZE, mic.gain);
+
+					// auto gain (sounds like fucking shit if you ask me, not a fan)
+					agc(pcm, FRAME_SIZE, 100000.0f, mic.gain);
+
 					// de-essing
 					de_ess(pcm, FRAME_SIZE, 0.2f, 0.5f);
+
 					// High pass filtering
 					high_pass_filter(pcm, FRAME_SIZE, 1.0f-highpass);
+					
 					// Low pass filtering
 					low_pass_filter(pcm, FRAME_SIZE, 1.0f-lowpass);
+					
+					// Noise suppression (meh makes the audio more choppy i dont like it)
+					//noise_suppress(pcm, FRAME_SIZE, 300);
+					
 #ifdef _DEBUG_
 					if(debug == 1) {
 					// Print debug
@@ -269,9 +401,9 @@ void* capture_send_audio(void* arg) {
 					int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
 #ifdef _XOR_
 					// Apply XOR
-					xor4x((uint8_t*)opus, sizeof(opus));
+					xor4x((uint8_t*)opus, bytes_encoded);
 					// Byte flipping
-					bytefliparray((uint8_t*)opus, sizeof(opus), 1);
+					bytefliparray((uint8_t*)opus, bytes_encoded, 1);
 #endif
 					// Send to sock
 					ssize_t s = send(sockfd, (uint8_t*)opus, bytes_encoded, MSG_NOSIGNAL);
@@ -296,6 +428,14 @@ void* capture_send_audio(void* arg) {
 				else{
 					// turn off the mic after mic.key_up_start has passed MIC_TIMEOUT_SECONDS
 					mic.key_up = 0;
+					// Roger beep
+					if(selected_roger_beep > 0) {
+						// Send roger beep
+				        send_roger_beep(sockfd, selected_roger_beep);
+					    // Microsecond sleep
+					    sleep_us(500000); //0.5 seconds (wait for roger beep to finish)
+					}
+					// Print debug
 					printf("\033[1;36m[Mic off]\033[0m\n");
 				}
 			
@@ -312,7 +452,7 @@ void* capture_send_audio(void* arg) {
 						fprintf(stderr, "Error reading PCM from device: %s\n", snd_strerror(w));
 					}
 				}
-			
+					
 			}
 		}
     }
@@ -361,7 +501,7 @@ int client(int argc, char *argv[]) {
 		}
 		
 		// Apply the mic settings
-		mic.gain     = 1.0f;
+		mic.gain     = 2.0f;
 		mic.busy     = 0;
 		mic.monitor  = 0;
 		mic.key_up   = 0;
@@ -443,7 +583,7 @@ int client(int argc, char *argv[]) {
 	
 	// If playback handle was initialized
 	if(play) {
-		// init alsa playback and capture threads and psockets
+		// init recv / playback thread
 		pthread_t recv_thread;
 		pthread_create(&recv_thread, NULL, receive_play_audio, &sockfd);
 		printf("Receive thread started\n");
@@ -451,7 +591,7 @@ int client(int argc, char *argv[]) {
 	
 	// If capture handle was initialized
 	if(capture) {
-		// init alsa playback and capture threads and psockets
+		// init capture / send thread
 		pthread_t send_thread;
 		pthread_create(&send_thread, NULL, capture_send_audio, &sockfd);
 		printf("Send thread started\n");
@@ -463,7 +603,7 @@ int client(int argc, char *argv[]) {
 	printf("\033[1;35m----------------------------------------------------\033[0m\n");
 	
 	// Loop de loop
-	while (running) {		
+	while (running) {
 		// Input var
 		char ch;
 		// Read in byte from stdin
@@ -471,6 +611,22 @@ int client(int argc, char *argv[]) {
 		if (n > 0 && ch == 'q') {
 			// Shutdown
 			running = 0;
+		}
+		// Read in byte from stdin
+		if (n > 0 && ch == 'r') {
+			// Swap toggle recording
+			recording ++;
+			// If its greater than 2, reset
+			if(recording > 1)
+				recording = 0;
+			
+			if(recording){
+				open_wave_file("recorded.wav");
+				printf("writing to file\n");
+			}else{
+				close_wave_file("recorded.wav");
+				printf("file closed\n");
+			}
 		}
 #ifdef _DEBUG_
 		if (n > 0 && ch == 'd') {
@@ -494,31 +650,52 @@ int client(int argc, char *argv[]) {
 			if (n > 0 && ch == ' ') {
 				//Enable / disable the mic
 				if((!mic.key_up) && (!mic.busy)) {
+					// Debug
+					printf("\033[1;35m[Mic on]\033[0m\n");
+					/*
+					// Roger beep
+					if(selected_roger_beep > 0) {
+						// Send roger beep
+				        send_roger_beep(sockfd, selected_roger_beep);
+					    // Microsecond sleep
+					    sleep_us(500000); //0.5 seconds (wait for roger beep to finish)
+					}
+					*/
 					// Mic on!
 					mic.key_up = 1;
 					// Start the timer
 					mic.key_up_start = time(NULL);
-					// Debug
-					printf("\033[1;35m[Mic on]\033[0m\n");
 				} 
-				else {
+				else if (mic.key_up) {
+					// Mic off!
+					mic.key_up = 0;
+					// Roger beep
+					if(selected_roger_beep > 0) {
+						// Send roger beep
+				        send_roger_beep(sockfd, selected_roger_beep);
+					    // Microsecond sleep
+					    sleep_us(500000); //0.5 seconds (wait for roger beep to finish)
+					}
+					// Debug
+					printf("\033[1;36m[Mic off]\033[0m\n");
+				}
+				else{
 					// Mic off!
 					mic.key_up = 0;
 					// Debug
 					printf("\033[1;36m[Mic off]\033[0m\n");
 				}
-				
 			}
 			else if (n > 0 && ch == '-') {
 				// If mic gain is greater than 0 decrement the gain
-				if(mic.gain > 0.1f)
-					mic.gain -= 0.1f;
+				if(mic.gain > 1.0f)
+					mic.gain -= 1.0f;
 				printf("mic.gain: %f\n", mic.gain);
 			}
 			else if (n > 0 && ch == '=') {
 				// If mic gain is less than 3 increment the gain
-				if(mic.gain < 3.0f)
-					mic.gain += 0.1f;
+				if(mic.gain < 10.0f)
+					mic.gain += 1.0f;
 				printf("mic.gain: %f\n", mic.gain);
 			}
 			
@@ -534,7 +711,6 @@ int client(int argc, char *argv[]) {
 					highpass += 0.1f;
 				printf("highpass: %f\n", highpass);
 			}
-			
 			else if (n > 0 && ch == '3') {
 				// If lowpass is greater than 0 decrement the gain
 				if(lowpass > 0.1f)
@@ -547,8 +723,6 @@ int client(int argc, char *argv[]) {
 					lowpass += 0.1f;
 				printf("lowpass: %f\n", lowpass);
 			}
-			
-			
 			else if (n > 0 && ch == 'm') {
 				// Enable microphone monitoring mode
 				if(!mic.monitor) {
@@ -562,6 +736,12 @@ int client(int argc, char *argv[]) {
 					printf("mic.monitor: %d\n", mic.monitor);
 				}
 			}
+			else if (n > 0 && ch == 'b') {
+				if(selected_roger_beep < 3) selected_roger_beep ++;
+				else selected_roger_beep = 0;
+				printf("selected_roger_beep: %d\n", selected_roger_beep);
+			}
+			
 		}
 		// Microsecond sleep
 		sleep_us(1000);

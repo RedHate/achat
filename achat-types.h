@@ -35,12 +35,3 @@ typedef struct micinfo{
 }micinfo;
 
 
-/**
-* not implemented yet, still debating if i want usernames.
-*/
-typedef struct payload{
-	char     *username;  // username buffer 16 byte names max
-	uint8_t  opus[FRAME_SIZE];        // opus data
-	uint32_t opus_size;               // size of opus data in bytes
-}payload;
-
