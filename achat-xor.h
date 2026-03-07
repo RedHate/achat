@@ -80,3 +80,4 @@ uint32_t shuffle32(uint32_t block, int mode);
   */
 void bytefliparray(uint8_t *buffer, uint32_t size, int mode);
 
+void mutate_data(uint8_t *buffer, size_t size, int mode);

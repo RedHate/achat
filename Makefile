@@ -10,13 +10,16 @@ LIBS = -lopus -lasound -lpthread -lm
 
 all: clean $(TARGET)
 
-server: clean $(TARGET)
+server:  $(TARGET)
+	@printf "\033[1;36m[CC]\033[0m server\n"
 	@./achat 6688
 	
 client-1: clean $(TARGET)
+	@printf "\033[1;36m[CC]\033[0m client\n"
 	@./achat 127.0.0.1 6688 plug:hw:3 plug:hw:0
 
 client-2: clean $(TARGET)
+	@printf "\033[1;36m[CC]\033[0m client\n"
 	@./achat 127.0.0.1 6688 plug:hw:0 plug:hw:3
 
 clean:

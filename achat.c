@@ -23,6 +23,9 @@
 */
 
 /*
+ * --------------------------------------------------------------------------
+ *   About:
+ * --------------------------------------------------------------------------
  * 
  * achat - An organically grown way of how not to create voice chat.
  * [16-Bit alsa / libopus voice chat]
@@ -32,6 +35,7 @@
  * --------------------------------------------------------------------------
  *   Notes:
  * --------------------------------------------------------------------------
+ * 
  *   You may encounter an issue with there being a douplicate time
  * definition in one of your alsa headers, alsa/config.h iirc. Comment
  * it out of that header. You have "time.h" in c99.
@@ -40,27 +44,23 @@
  * on my end so test it before replacing it with some crap like sleep();
  * 
  * --------------------------------------------------------------------------
- *   Latest changes:
- * --------------------------------------------------------------------------
- * 1) if a user is currently mic'd up the program willnot allow you to mic up 
- * over them. Now there is proper shared channel style chat. 
- * 
- * 2) Idiot proofing-of sockets and error checking of functions.
- * 
- * --------------------------------------------------------------------------
  *   Controls:
  * --------------------------------------------------------------------------
- * Input controls:
- * 		Push to talk: 'spacebar'
- * 		Show debug: 'd'
- *      Change color of visualiser: 'c'
- *      Mic gain: '-' for less '+' for more
- *      Mic monitor 'm'
- *      Quit 'q'
  * 
+ * Input controls:
+ *      Quit 'q'
+ * 		Push to talk: 'spacebar'
+ *      Mic monitor 'm'
+ *      Enable stream masking 'x'
+ *      Mic gain: '-' for less '+' for more
+ * 		Highpass: '1' for less '2' for more
+ * 		Lowpass:  '3' for less '4' for more
+ * 		Pitch:    '5' for less '6' for more
+ *      
  * --------------------------------------------------------------------------
  *   Tip:
  * --------------------------------------------------------------------------
+ * 
  * Use plug devices! 
  * 			
  * 		plug:hw:1 rather than hw:1
@@ -108,13 +108,21 @@ char   username[16];         // 16 bytes seems fair
 // Var for shutdown
 int    running      = 1;     // control var
 
+// Var for debug
+int    debug        = 1;
+
 // For visualizer
-int    debug        = 0;     // toggle with 'd' button
 int    color_mode   = 0;     // toggle color mode of the visualizer with 'c' key
 
 // For filtering
 float  highpass     = 0.0f;  // hipass filter threshold
 float  lowpass      = 0.0f;  // lowpass filter threshold
+
+// For voice pitch
+float  voice_pitch  = 0.0f;
+
+// For XOR / Byte/Nibbleshift
+int mask_mode = 0;
 
 // Mic data defined in achat-types.h
 micinfo mic;
@@ -136,79 +144,12 @@ void sleep_us(long microseconds) {
 }
 
 /* ----------------------------------------*/
-/*                    WAV                  */
+/*                ROGER BEEP               */
 /* ----------------------------------------*/
 
-// WAV header structure
-typedef struct {
-    char chunkID[4];       // "RIFF"
-    uint32_t chunkSize;    // 36 + Subchunk2Size
-    char format[4];        // "WAVE"
-    char subchunk1ID[4];   // "fmt "
-    uint32_t subchunk1Size;// 16 for PCM
-    uint16_t audioFormat;  // PCM = 1
-    uint16_t numChannels;  // e.g., 1 for mono
-    uint32_t sampleRate;   // e.g., 44100
-    uint32_t byteRate;     // sampleRate * numChannels * bitsPerSample/8
-    uint16_t blockAlign;   // numChannels * bitsPerSample/8
-    uint16_t bitsPerSample;// e.g., 16
-    char subchunk2ID[4];   // "data"
-    uint32_t subchunk2Size;// numSamples * numChannels * bitsPerSample/8
-} WAVHeader;
-
-FILE *recorded_wav;
-
-// Function to save PCM buffer as WAV
-void open_wave_file(const char *filename) {
-    
-    // Set compressor parameters
-    WAVHeader header = {
-		.chunkID = "RIFF",                                         // "RIFF"
-		.chunkSize = 36 + FRAME_SIZE * CHANNELS * sizeof(short) ,  // 36 + Subchunk2Size
-		.format = "WAVE",                                          // "WAVE"
-		.subchunk1ID = "fmt ",                                     // "fmt "
-		.subchunk1Size = 16,                                       // 16 for PCM
-		.audioFormat = 1,                                          // PCM = 1
-		.numChannels = CHANNELS,                                   // e.g., 1 for mono
-		.sampleRate = SAMPLE_RATE,                                 // e.g., 44100
-		.byteRate = SAMPLE_RATE * CHANNELS * sizeof(short) ,       // sampleRate * numChannels * bitsPerSample/8
-		.blockAlign = CHANNELS * sizeof(short) ,                   // numChannels * bitsPerSample/8
-		.bitsPerSample = 16,                                       // e.g., 16
-		.subchunk2ID = "data",                                     // "data"
-		.subchunk2Size  = FRAME_SIZE * CHANNELS * sizeof(short)    // numSamples * numChannels * bitsPerSample/8
-    };
- 
-    // Write to file
-    recorded_wav = fopen(filename, "wb");
-    if (!recorded_wav) {
-        perror("Failed to open file");
-        return;
-    }
-
-    fwrite(&header, sizeof(WAVHeader), 1, recorded_wav);
-
-}
-
-void write_frame_to_wave_file(const short *buffer){
-	fwrite(buffer, sizeof(short), FRAME_SIZE, recorded_wav);
-}
-
-void close_wave_file(){
-    fclose(recorded_wav);
-}
-
-/* ----------------------------------------*/
-/*                   ALSA                  */
-/* ----------------------------------------*/
-
-// ALSA handles
-snd_pcm_t *capture_handle;
-snd_pcm_t *playback_handle;
-
-int recording = 0;
 int selected_roger_beep = 0;
 
-void roger_beep(short *buffer, uint32_t size, int frequency){
+void generate_tone(short *buffer, uint32_t size, int frequency){
 	
     // Generate sine wave samples
     int i;
@@ -233,31 +174,33 @@ void send_roger_beep(int sockfd, int beep_type){
 	
 		switch(beep_type){
 			case 0:{ /* nada */ }break;
-			case 1:{ roger_beep(pcm, FRAME_SIZE, 100+(100*i));  }break;
-			case 2:{ roger_beep(pcm, FRAME_SIZE, 1900-(100*i)); }break;
-			case 3:{ roger_beep(pcm, FRAME_SIZE, 1000);         }break;
+			case 1:{ generate_tone(pcm, FRAME_SIZE, 100+(100*i));  }break;
+			case 2:{ generate_tone(pcm, FRAME_SIZE, 1900-(100*i)); }break;
+			case 3:{ generate_tone(pcm, FRAME_SIZE, 1000);         }break;
 		}
 		
 		// opus encode
 		int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
-		// Apply XOR
-		xor4x((uint8_t*)opus, bytes_encoded);
-		// Byte flipping
-		bytefliparray((uint8_t*)opus, bytes_encoded, 1);
+#ifdef _XOR_
+		if(mask_mode) mutate_data(opus, bytes_encoded, 1);
+#endif
 		// Send to sock
 		ssize_t s = send(sockfd, opus, bytes_encoded, MSG_NOSIGNAL);
 		if(s < 1){
 			printf("Connection has died.\n");
 			running = 0;
-		} 
-		
-		// write the stream to file
-		if(recording){
-			write_frame_to_wave_file(pcm);
 		}
-		
 	}
 }
+
+
+/* ----------------------------------------*/
+/*                   ALSA                  */
+/* ----------------------------------------*/
+
+// ALSA handles
+snd_pcm_t *capture_handle;
+snd_pcm_t *playback_handle;
 
 /*
  * Still need to seperate these into send / recv only and playback / capture only color threads.
@@ -283,26 +226,19 @@ void* receive_play_audio(void* arg) {
 			running = 0;
 		} 
 		else if (r > 0) {
-#ifdef _DEBUG_
-			// Debug
-			if(debug == 2) {
-				printf("\033[1;36mRecv) %ld\033[0m ", r);
-				debug_print_hex((uint8_t*)opus, r);
-			}
-#endif
+			
 #ifdef _XOR_
-			// Byte flipping
-			bytefliparray((uint8_t*)opus, r, 0);
-			// Apply XOR
-			xor4x((uint8_t*)opus, r);
+			if(mask_mode) mutate_data(opus, r, 0);
+#endif
+#ifdef _DEBUG_
+			// debug
+			if(debug){ 
+				debug_print_hex(opus, r);
+				printf("\033[1;36mRecv) %ld\033[0m ", r);
+			}
 #endif
 			// opus decode
 			opus_decode_buffer(opus, r, pcm, FRAME_SIZE);
-			
-			// write the stream to file
-			if(recording){
-				write_frame_to_wave_file(pcm);
-			}
 			
 			// write pcm to sound device
 			ssize_t w = snd_pcm_writei(playback_handle, pcm, FRAME_SIZE);
@@ -314,22 +250,11 @@ void* receive_play_audio(void* arg) {
 				// Error
 				fprintf(stderr, "Error reading PCM from device: %s\n", snd_strerror(w));
 			}
-#ifdef _DEBUG_
 			else if (w > 0) {
-				// Print debug (toggled with d)
-				if(debug == 1) {
-					printf("\033[1;36mPCM) %d\033[0m ", FRAME_SIZE);
-					debug_print_hex((uint8_t*)pcm, FRAME_SIZE);
-				}
-				// Print visualiser (toggled with d)
-				if(debug == 3) {
-					audio_visualiser(pcm, sizeof(pcm), color_mode);
-				}
 				// Set mic busy in the read thread (set not busy in the play thread since it doesnt bind there)
 				mic.busy_start = time(NULL);
 				mic.busy = 1;
 			}
-#endif
 		}
     }
     // Return
@@ -369,61 +294,53 @@ void* capture_send_audio(void* arg) {
 				// Check the time 60 second time out
 				if((time(NULL)-mic.key_up_start) < MIC_TIMEOUT_SECONDS) {
 					
-					// ROFL! this is pricelessly funny but not very good, 0 - 1.0f
-					// pitch_shift(pcm, FRAME_SIZE, 0.75f);
-					
-					// pre-amps the initial signal
-					//manual_gain(pcm, FRAME_SIZE, mic.gain);
+					// Detect speech
+					if (voice_activation_detection(pcm, FRAME_SIZE, 0.04f)) {
+					    
+						// ROFL! this is pricelessly funny but not very good, 0 - 1.0f
+						pitch_shift(pcm, FRAME_SIZE, voice_pitch);
+						
+						// pre-amps the initial signal
+						//manual_gain(pcm, FRAME_SIZE, mic.gain);
 
-					// auto gain (sounds like fucking shit if you ask me, not a fan)
-					agc(pcm, FRAME_SIZE, 100000.0f, mic.gain);
+						// auto gain (sounds like fucking shit if you ask me, not a fan)
+						agc(pcm, FRAME_SIZE, 100000.0f, mic.gain);
 
-					// de-essing
-					de_ess(pcm, FRAME_SIZE, 0.2f, 0.5f);
+						// de-essing
+						de_ess(pcm, FRAME_SIZE, 0.2f, 0.5f);
 
-					// High pass filtering
-					high_pass_filter(pcm, FRAME_SIZE, 1.0f-highpass);
-					
-					// Low pass filtering
-					low_pass_filter(pcm, FRAME_SIZE, 1.0f-lowpass);
-					
-					// Noise suppression (meh makes the audio more choppy i dont like it)
-					//noise_suppress(pcm, FRAME_SIZE, 300);
-					
+						// High pass filtering
+						high_pass_filter(pcm, FRAME_SIZE, 1.0f-highpass);
+						
+						// Low pass filtering
+						low_pass_filter(pcm, FRAME_SIZE, 1.0f-lowpass);
+						
+						// Noise suppression (meh makes the audio more choppy i dont like it)
+						//noise_suppress(pcm, FRAME_SIZE, 300);
+						
+						// opus encode
+						int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
 #ifdef _DEBUG_
-					if(debug == 1) {
-					// Print debug
-						printf("\033[1;35mPCM) %d\033[0m ", FRAME_SIZE);
-						debug_print_hex((uint8_t*)pcm, FRAME_SIZE);
-					}
-#endif				
-					// opus encode
-					int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
-#ifdef _XOR_
-					// Apply XOR
-					xor4x((uint8_t*)opus, bytes_encoded);
-					// Byte flipping
-					bytefliparray((uint8_t*)opus, bytes_encoded, 1);
-#endif
-					// Send to sock
-					ssize_t s = send(sockfd, (uint8_t*)opus, bytes_encoded, MSG_NOSIGNAL);
-					if(s < 1){
-						printf("Connection has died.\n");
-						running = 0;
-					} 
-#ifdef _DEBUG_
-					else if(s > 0) {
-						// Debug
-						if(debug == 2) {
-						// Print debug
+						// debug
+						if(debug){ 
+							debug_print_hex(opus, bytes_encoded);
 							printf("\033[1;35mSend) %d\033[0m ", bytes_encoded);
-							debug_print_hex((uint8_t*)opus, bytes_encoded);
 						}
-						if(debug == 3) {
-							audio_visualiser(pcm, sizeof(pcm), color_mode);
-						}
-					}
 #endif
+#ifdef _XOR_
+						if(mask_mode) mutate_data(opus, bytes_encoded, 1);
+#endif
+						// Send to sock
+						ssize_t s = send(sockfd, (uint8_t*)opus, bytes_encoded, MSG_NOSIGNAL);
+						if(s < 1){
+							printf("Connection has died.\n");
+							running = 0;
+						} 
+						else if(s > 0) {
+							// data sent do debuging
+						}
+					
+					} 
 				}
 				else{
 					// turn off the mic after mic.key_up_start has passed MIC_TIMEOUT_SECONDS
@@ -485,11 +402,11 @@ int client(int argc, char *argv[]) {
 	// Quick clear of the console
     system("clear");
     
-    // print legend 
+    // Print legend 
     printf("\033[1;35m----------------------------------------------------\033[0m\n");
     printf("\n    \033[1;36mUltros \033[1;35mMaximus\n    \033[1;33mhttps://gitub.com/redhate\033[0m\n\n");
 
-	// print more legend 
+	// Print more legend 
 	printf("\033[1;35m-----------------------AUDIO------------------------\033[0m\n");
 
 	// If capture handle was initialized
@@ -526,7 +443,7 @@ int client(int argc, char *argv[]) {
     xor_keys("gofuckyourselfasshole!");
 #endif
     
-	// print more legend 
+	// Print more legend 
 	printf("\033[1;36m-----------------------STATUS-----------------------\033[0m\n");
     
 	// Server info
@@ -578,7 +495,7 @@ int client(int argc, char *argv[]) {
         return 4;
     }
 	
-	// print more legend 
+	// Print more legend 
 	printf("\033[1;35m-----------------------THREADS----------------------\033[0m\n");
 	
 	// If playback handle was initialized
@@ -597,7 +514,7 @@ int client(int argc, char *argv[]) {
 		printf("Send thread started\n");
 	}
 	
-	// print more legend 
+	// Print more legend 
 	printf("\033[1;36m----------------------NOW ONLINE--------------------\033[0m\n");
 	printf("Press spacebar to start / stop the mic\nYou cannot mic up while someone else is talking\n");
 	printf("\033[1;35m----------------------------------------------------\033[0m\n");
@@ -608,46 +525,31 @@ int client(int argc, char *argv[]) {
 		char ch;
 		// Read in byte from stdin
 		int n = read(STDIN_FILENO, &ch, 1);
-		if (n > 0 && ch == 'q') {
+		if (n > 0 && ch == 'q') { // Quit
 			// Shutdown
 			running = 0;
 		}
-		// Read in byte from stdin
-		if (n > 0 && ch == 'r') {
-			// Swap toggle recording
-			recording ++;
-			// If its greater than 2, reset
-			if(recording > 1)
-				recording = 0;
-			
-			if(recording){
-				open_wave_file("recorded.wav");
-				printf("writing to file\n");
-			}else{
-				close_wave_file("recorded.wav");
-				printf("file closed\n");
-			}
-		}
-#ifdef _DEBUG_
-		if (n > 0 && ch == 'd') {
+		if (n > 0 && ch == 'd') { // DEbug mode on / off
 			// Swap debug display modes
 			debug ++;
 			// If its greater than 2, reset
-			if(debug > 3)
+			if(debug > 1)
 				debug = 0;
+			printf("debug mode %d\n", debug);
 		}
-		if (n > 0 && ch == 'c') {
-			// Swap debug display modes
-			color_mode ++;
+		if (n > 0 && ch == 'x') { // Voice masking mode on / off
+			// Toggle mask mode
+			mask_mode ++;
 			// If its greater than 2, reset
-			if(color_mode > 1)
-				color_mode = 0;
+			if(mask_mode > 1)
+				mask_mode = 0;
+			printf("masking mode %d\n", mask_mode);
 		}
-#endif
+
 		// If capture handle was initialized
 		if(capture) {
 			// Has spacebar been pressed?
-			if (n > 0 && ch == ' ') {
+			if (n > 0 && ch == ' ') { // Push to talk (latches on / off dont hold it)
 				//Enable / disable the mic
 				if((!mic.key_up) && (!mic.busy)) {
 					// Debug
@@ -686,44 +588,55 @@ int client(int argc, char *argv[]) {
 					printf("\033[1;36m[Mic off]\033[0m\n");
 				}
 			}
-			else if (n > 0 && ch == '-') {
+			else if (n > 0 && ch == '-') { // Gain threshold down
 				// If mic gain is greater than 0 decrement the gain
 				if(mic.gain > 1.0f)
 					mic.gain -= 1.0f;
 				printf("mic.gain: %f\n", mic.gain);
 			}
-			else if (n > 0 && ch == '=') {
+			else if (n > 0 && ch == '=') { // Gain threshold up
 				// If mic gain is less than 3 increment the gain
 				if(mic.gain < 10.0f)
 					mic.gain += 1.0f;
 				printf("mic.gain: %f\n", mic.gain);
 			}
-			
-			else if (n > 0 && ch == '1') {
+			else if (n > 0 && ch == '1') { // Highpass down
 				// If highpass is greater than 0 decrement the gain
 				if(highpass > 0.1f)
 					highpass -= 0.1f;
 				printf("highpass: %f\n", highpass);
 			}
-			else if (n > 0 && ch == '2') {
+			else if (n > 0 && ch == '2') { // Highpass up
 				// If highpass is less than 3 increment the gain
 				if(highpass < 1.0f)
 					highpass += 0.1f;
 				printf("highpass: %f\n", highpass);
 			}
-			else if (n > 0 && ch == '3') {
+			else if (n > 0 && ch == '3') { // Lowpass down
 				// If lowpass is greater than 0 decrement the gain
 				if(lowpass > 0.1f)
 					lowpass -= 0.1f;
 				printf("lowpass: %f\n", lowpass);
 			}
-			else if (n > 0 && ch == '4') {
+			else if (n > 0 && ch == '4') { // Lowpass down
 				// If lowpass is less than 3 increment the gain
 				if(lowpass < 1.0f)
 					lowpass += 0.1f;
 				printf("lowpass: %f\n", lowpass);
 			}
-			else if (n > 0 && ch == 'm') {
+			else if (n > 0 && ch == '5') { // Pitch down
+				// If highpass is greater than 0 decrement the gain
+				if(voice_pitch > 0.1f)
+					voice_pitch -= 0.1f;
+				printf("voice_pitch: %f\n", voice_pitch);
+			}
+			else if (n > 0 && ch == '6') { // Pitch up
+				// If highpass is less than 3 increment the gain
+				if(voice_pitch < 1.0f)
+					voice_pitch += 0.1f;
+				printf("voice_pitch: %f\n", voice_pitch);
+			}
+			else if (n > 0 && ch == 'm') { // Microphone monitoring mode
 				// Enable microphone monitoring mode
 				if(!mic.monitor) {
 					// Monitor on
@@ -736,7 +649,7 @@ int client(int argc, char *argv[]) {
 					printf("mic.monitor: %d\n", mic.monitor);
 				}
 			}
-			else if (n > 0 && ch == 'b') {
+			else if (n > 0 && ch == 'b') { // Roger beep select
 				if(selected_roger_beep < 3) selected_roger_beep ++;
 				else selected_roger_beep = 0;
 				printf("selected_roger_beep: %d\n", selected_roger_beep);
@@ -750,7 +663,6 @@ int client(int argc, char *argv[]) {
 	// Disable the mic so we dont segfault on the way out if quit is pressed while mic is keyed up
 	mic.key_up = 0;
 	
-
     // Destroy opus handles
     deinit_opus();
     // Destroy alsa handles
@@ -1062,7 +974,7 @@ int server(int argc, char *argv[]) {
 // Print the usage legend
 static void print_usage(int argc, char *argv[]) {
 	printf("\n    \033[1;36mUltros \033[1;35mMaximus\n    \033[1;33mhttps://gitub.com/redhate\033[0m\n");
-	printf("\nUsage:\n    Server:\n        %s [listener_port] [capture device] [playback device]\n\n    Client:\n        %s [server_ip] [port] [capture device] [playback device]\n\n    Example:\n        Server:\n            %s 1122 default default\n\n        Client:\n            %s 127.0.0.1 1122 default default\n\n", argv[0], argv[0], argv[0], argv[0]);
+	printf("\nUsage:\n    Server:\n        %s [listener_port]\n\n    Client:\n        %s [server_ip] [port] [capture device] [playback device]\n\n    Example:\n        Server:\n            %s 1122 \n\n        Client:\n            %s 127.0.0.1 1122 default default\n\n", argv[0], argv[0], argv[0], argv[0]);
 }
 
 /* ----------------------------------------*/

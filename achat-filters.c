@@ -286,7 +286,7 @@ void pitch_shift(int16_t *buffer, size_t size, float pitch_factor) {
     
     // pitch_factor > 1.0 = higher pitch, < 1.0 = lower pitch
     float index = 0.0f;
-    float step = 1.0f / pitch_factor; // determines how fast we move through input
+    float step = 1.0f+pitch_factor; // determines how fast we move through input
 
     for (size_t i = 0; i < size; i++) {
         size_t idx = (size_t)index;
@@ -345,14 +345,6 @@ float linear_to_db(float linear) {
 float detect_level(int16_t sample) {
     return fabsf((float)sample / 32768.0f);
 }
-
-// Noise gate parameters
-typedef struct {
-    float threshold;      // Threshold level (0.0 to 1.0)
-    float attack_time;    // Attack time in seconds
-    float release_time;   // Release time in seconds
-    float sample_rate;    // Samples per second
-} noise_gate_params_t;
 
 // Apply noise gate
 void noise_gate(int16_t *buffer, size_t size, noise_gate_params_t *params) {
