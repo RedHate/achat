@@ -164,14 +164,14 @@ void generate_tone(short *buffer, uint32_t size, int frequency){
 
 void send_roger_beep(int sockfd, int beep_type){
 
-	// buffers
+	// Local vars
 	uint16_t pcm[FRAME_SIZE];
 	uint8_t opus[FRAME_SIZE];
 
-	// generate tone	
+	// generate tone
 	int i;
 	for(i = 0; i < 16; i++){	
-	
+		// check selected beep type
 		switch(beep_type){
 			case 0:{ /* nada */ }break;
 			case 1:{ generate_tone(pcm, FRAME_SIZE, 100+(100*i));  }break;
@@ -182,7 +182,8 @@ void send_roger_beep(int sockfd, int beep_type){
 		// opus encode
 		int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
 #ifdef _XOR_
-		if(mask_mode) mutate_data(opus, bytes_encoded, 1);
+		// if mask mode is enabled shuffle and xor
+		if(mask_mode) xor_shuffle(opus, bytes_encoded, 1);
 #endif
 		// Send to sock
 		ssize_t s = send(sockfd, opus, bytes_encoded, MSG_NOSIGNAL);
@@ -226,20 +227,19 @@ void* receive_play_audio(void* arg) {
 			running = 0;
 		} 
 		else if (r > 0) {
-			
 #ifdef _XOR_
-			if(mask_mode) mutate_data(opus, r, 0);
+			// if mask mode is enabled shuffle and xor
+			if(mask_mode) xor_shuffle(opus, r, 0);
 #endif
 #ifdef _DEBUG_
 			// debug
-			if(debug){ 
-				debug_print_hex(opus, r);
+			if(debug){
 				printf("\033[1;36mRecv) %ld\033[0m ", r);
+				debug_print_hex(opus, r);
 			}
 #endif
 			// opus decode
 			opus_decode_buffer(opus, r, pcm, FRAME_SIZE);
-			
 			// write pcm to sound device
 			ssize_t w = snd_pcm_writei(playback_handle, pcm, FRAME_SIZE);
 			if (w == -EPIPE) {
@@ -287,48 +287,36 @@ void* capture_send_audio(void* arg) {
 			fprintf(stderr, "Error writing PCM to device: %s\n", snd_strerror(r));
 		}
 		else if (r > 0) {
-			
 			// Are we keyed up? and is the mic busy?
 			if((mic.key_up) && (!mic.busy)) {
-				
 				// Check the time 60 second time out
 				if((time(NULL)-mic.key_up_start) < MIC_TIMEOUT_SECONDS) {
-					
 					// Detect speech
-					if (voice_activation_detection(pcm, FRAME_SIZE, 0.04f)) {
-					    
+					if (voice_activation_detection(pcm, FRAME_SIZE, 0.045f)) {
 						// ROFL! this is pricelessly funny but not very good, 0 - 1.0f
 						pitch_shift(pcm, FRAME_SIZE, voice_pitch);
-						
-						// pre-amps the initial signal
-						//manual_gain(pcm, FRAME_SIZE, mic.gain);
-
-						// auto gain (sounds like fucking shit if you ask me, not a fan)
-						agc(pcm, FRAME_SIZE, 100000.0f, mic.gain);
-
-						// de-essing
-						de_ess(pcm, FRAME_SIZE, 0.2f, 0.5f);
-
-						// High pass filtering
-						high_pass_filter(pcm, FRAME_SIZE, 1.0f-highpass);
-						
-						// Low pass filtering
-						low_pass_filter(pcm, FRAME_SIZE, 1.0f-lowpass);
-						
 						// Noise suppression (meh makes the audio more choppy i dont like it)
 						//noise_suppress(pcm, FRAME_SIZE, 300);
-						
+						// auto gain (sounds like fucking shit if you ask me, not a fan)
+						agc(pcm, FRAME_SIZE, 100000.0f, mic.gain);
+						// de-essing
+						de_ess(pcm, FRAME_SIZE, 0.2f, 0.5f);
+						// High pass filtering
+						high_pass_filter(pcm, FRAME_SIZE, 1.0f-highpass);
+						// Low pass filtering
+						low_pass_filter(pcm, FRAME_SIZE, 1.0f-lowpass);
 						// opus encode
 						int bytes_encoded = opus_encode_buffer(pcm, FRAME_SIZE, opus, FRAME_SIZE);
 #ifdef _DEBUG_
 						// debug
-						if(debug){ 
-							debug_print_hex(opus, bytes_encoded);
+						if(debug){
 							printf("\033[1;35mSend) %d\033[0m ", bytes_encoded);
+							debug_print_hex(opus, bytes_encoded);
 						}
 #endif
 #ifdef _XOR_
-						if(mask_mode) mutate_data(opus, bytes_encoded, 1);
+						// if mask mode is enabled shuffle and xor
+						if(mask_mode) xor_shuffle(opus, bytes_encoded, 1);
 #endif
 						// Send to sock
 						ssize_t s = send(sockfd, (uint8_t*)opus, bytes_encoded, MSG_NOSIGNAL);
@@ -355,7 +343,6 @@ void* capture_send_audio(void* arg) {
 					// Print debug
 					printf("\033[1;36m[Mic off]\033[0m\n");
 				}
-			
 				// Microphone monitor mode
 				if(mic.monitor) {
 					// write pcm to sound device

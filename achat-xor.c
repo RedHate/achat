@@ -484,7 +484,7 @@ void xor_directional(uint8_t *buffer, size_t size, uint32_t *key, int direction)
 		uint32_t i;
 		for (i = 0; i < size; i++) {
 			// XOR shift the data according to the key and its relative read position
-			buffer[i] = (uint8_t)((uint8_t)key[keypos] ^ (uint8_t)buffer[i]);
+			buffer[i] = (uint8_t)(key[keypos] ^ buffer[i]);
 			// Move the key position
 			keypos++;
 			// If the key position is greater than the key length reset it
@@ -496,7 +496,7 @@ void xor_directional(uint8_t *buffer, size_t size, uint32_t *key, int direction)
 		uint32_t i;
 		for (i = size; i > 0; i--) {
 			// XOR shift the data according to the key and its relative read position
-			buffer[i] = (uint8_t)((uint8_t)key[keypos] ^ (uint8_t)buffer[i]);
+			buffer[i] = (uint8_t)(key[keypos] ^ buffer[i]);
 			// Move the key position
 			keypos++;
 			// If the key position is greater than the key length reset it
@@ -505,8 +505,8 @@ void xor_directional(uint8_t *buffer, size_t size, uint32_t *key, int direction)
 	}
 }
 
-// This adds a reversable layer of noise to our signal
-void xor4x(uint8_t *buffer, size_t size) {
+// XOR function
+void xor_buffer(uint8_t *buffer, size_t size) {
 	// Set the direction to 0
 	int direction = 0;
 	// loop through keys
@@ -536,7 +536,7 @@ void xor4x(uint8_t *buffer, size_t size) {
 }
 
 /* ----------------------------------------*/
-/*           NIBBLE/BYTE SHUFFLE           */
+/*              NIBBLE SWAPPING            */
 /* ----------------------------------------*/
 
 // 8bit nibble swap
@@ -558,12 +558,12 @@ void nibbleswaparray8(uint8_t *buffer, uint32_t size){
 
 
 // 16bit nibble swapping
-uint16_t nibbleswap16(uint16_t block, int mode){
+uint16_t nibbleswap16(uint16_t x, int mode){
 	// byte assignment
-	uint16_t a = (block >> 0)  & 0xF,
-			 b = (block >> 4)  & 0xF,
-			 c = (block >> 8)  & 0xF,
-			 d = (block >> 12) & 0xF;
+	uint16_t a = (x >> 0)  & 0xF,
+			 b = (x >> 4)  & 0xF,
+			 c = (x >> 8)  & 0xF,
+			 d = (x >> 12) & 0xF;
 	// Check mode
 	if(mode)
 		// mode 1 (inversion of mode 2)
@@ -589,22 +589,22 @@ void nibbleswaparray16(uint8_t *buffer, size_t size, int mode){
 
 
 // 32bit nibble swapping
-uint32_t nibbleswap32(uint32_t block, int mode){
+uint32_t nibbleswap32(uint32_t x, int mode){
 	// byte assignment
-	uint32_t a = (block >> 0)  & 0xF,
-			 b = (block >> 4)  & 0xF,
-			 c = (block >> 8)  & 0xF,
-			 d = (block >> 12) & 0xF,
-             e = (block >> 16) & 0xF,
-			 f = (block >> 20) & 0xF,
-			 g = (block >> 24) & 0xF,
-			 h = (block >> 28) & 0xF;
+	uint32_t a = (x >> 0)  & 0xF,
+			 b = (x >> 4)  & 0xF,
+			 c = (x >> 8)  & 0xF,
+			 d = (x >> 12) & 0xF,
+             e = (x >> 16) & 0xF,
+			 f = (x >> 20) & 0xF,
+			 g = (x >> 24) & 0xF,
+			 h = (x >> 28) & 0xF;
 	// Check mode
 	if(mode)
-		// mode 1 (inversion of mode 2) // weird last 4 nibbles are the same? huh?
+		// mode 1 (inversion of mode 2)
 		return (a<<28)|(b<<16)|(c<<0)|(d<<8)|(e<<4)|(f<<12)|(g<<20)|(h<<24);
 	else
-		// mode 2 (inversion of mode 1) // weird last 4 nibbles are the same? huh?
+		// mode 2 (inversion of mode 1)
 		return (h<<0)|(e<<4)|(a<<8)|(c<<12)|(b<<16)|(d<<20)|(f<<24)|(g<<28);
 }
 
@@ -623,20 +623,85 @@ void nibbleswaparray32(uint8_t *buffer, size_t size, int mode){
 }
 
 
-// 32bit byte swapping
-uint32_t byteswap32(uint32_t block, int mode){
+// 64bit nibble swapping //not finished
+uint64_t nibbleswap64(uint64_t x, int mode){
 	// byte assignment
-	uint32_t a = (block >> 0)  & 0xFF,
-			 b = (block >> 8)  & 0xFF,
-			 c = (block >> 16) & 0xFF,
-			 d = (block >> 24) & 0xFF;
+	uint64_t a = (x >> 0)  & 0xF,
+			 b = (x >> 4)  & 0xF,
+			 c = (x >> 8)  & 0xF,
+			 d = (x >> 12) & 0xF,
+             e = (x >> 16) & 0xF,
+			 f = (x >> 20) & 0xF,
+			 g = (x >> 24) & 0xF,
+			 h = (x >> 28) & 0xF,
+			 i = (x >> 32) & 0xF,
+			 j = (x >> 36) & 0xF,
+			 k = (x >> 40) & 0xF,
+			 l = (x >> 44) & 0xF,
+             m = (x >> 48) & 0xF,
+			 n = (x >> 52) & 0xF,
+			 o = (x >> 56) & 0xF,
+			 p = (x >> 60) & 0xF;
 	// Check mode
 	if(mode)
 		// mode 1 (inversion of mode 2)
-		return (c<<0)|(a<<8)|(d<<16)|(b<<24);
+		return (a<<4)|(b<<28)|(c<<16)|(d<<44)|(e<<52)|(f<<0)|(g<<36)|(h<<24)|(i<<60)|(j<<12)|(k<<32)|(l<<40)|(m<<20)|(n<<48)|(o<<8)|(p<<56);
 	else
 		// mode 2 (inversion of mode 1)
-		return (b<<0)|(d<<8)|(a<<16)|(c<<24);
+		return (a<<20)|(b<<0)|(c<<56)|(d<<36)|(e<<8)|(f<<48)|(g<<28)|(h<<4)|(i<<40)|(j<<24)|(k<<44)|(l<<12)|(m<<52)|(n<<16)|(o<<60)|(p<<32);
+}
+
+void nibbleswaparray64(uint8_t *buffer, size_t size, int mode){
+	// Loop through the array
+	int i;
+	for(i=0;i<size;i+=8){
+		// interleve nibbleswap64 mode
+		if(!mode)
+			mode = 1;
+		else
+			mode = 0;
+		// Shuffle and re-assign nibbles of the array
+		*((uint64_t*)&buffer[i]) = nibbleswap64(*((uint64_t*)&buffer[i]), mode);
+	}
+}
+
+
+/* ----------------------------------------*/
+/*                BYTE SWAPPING            */
+/* ----------------------------------------*/
+
+// 16bit byte swapping
+uint16_t byteswap16(uint16_t x){
+	// byte assignment
+	uint16_t a = (x >> 0) & 0xFF,
+			 b = (x >> 8) & 0xFF;
+	return (a<<8)|(b<<0);
+}
+
+void byteswaparray16(uint8_t *buffer, size_t size){
+	// Loop through the array
+	int i;
+	for(i=0;i<size;i++){
+		// Shuffle and re-assign 4 bytes of the array
+		*((uint16_t*)&buffer[i]) = byteswap16(*((uint16_t*)&buffer[i]));
+	}
+}
+
+
+// 32bit byte swapping
+uint32_t byteswap32(uint32_t x, int mode){
+	// byte assignment
+	uint32_t a = (x >> 0)  & 0xFF,
+			 b = (x >> 8)  & 0xFF,
+			 c = (x >> 16) & 0xFF,
+			 d = (x >> 24) & 0xFF;
+	// Check mode
+	if(mode)
+		// mode 1 (inversion of mode 2)
+		return (a<<8)|(b<<24)|(c<<0)|(d<<16);
+	else
+		// mode 2 (inversion of mode 1)
+		return (a<<16)|(b<<0)|(c<<24)|(d<<8);
 }
 
 void byteswaparray32(uint8_t *buffer, size_t size, int mode){
@@ -654,8 +719,43 @@ void byteswaparray32(uint8_t *buffer, size_t size, int mode){
 }
 
 
+// 64bit byte swapping
+uint64_t byteswap64(uint64_t x, int mode){
+	// byte assignment
+	uint64_t a = (x >> 0)  & 0xFF,
+			 b = (x >> 8)  & 0xFF,
+			 c = (x >> 16) & 0xFF,
+			 d = (x >> 24) & 0xFF,
+			 e = (x >> 32) & 0xFF,
+			 f = (x >> 40) & 0xFF,
+			 g = (x >> 48) & 0xFF,
+			 h = (x >> 56) & 0xFF;
+	// Check mode
+	if(mode)
+		// mode 1 (inversion of mode 2)
+		return (a<<0)|(b<<32)|(c<<40)|(d<<24)|(e<<48)|(f<<8)|(g<<56)|(h<<16);
+	else
+		// mode 2 (inversion of mode 1)
+		return (a<<0)|(b<<40)|(c<<56)|(d<<24)|(e<<8)|(f<<16)|(g<<32)|(h<<48);
+}
+
+void byteswaparray64(uint8_t *buffer, size_t size, int mode){
+	// Loop through the array
+	int i;
+	for(i=0;i<size;i+=8){
+		// interleve shuffle64 mode
+		if(!mode)
+			mode = 1;
+		else
+			mode = 0;
+		// Shuffle and re-assign 4 bytes of the array
+		*((uint64_t*)&buffer[i]) = byteswap64(*((uint64_t*)&buffer[i]), mode);
+	}
+}
+
+
 // Main obfuscation function
-void mutate_data(uint8_t *buffer, size_t size, int mode){
+void xor_shuffle(uint8_t *buffer, size_t size, int mode){
 	
 	/* there's no way some looky lou is just going to magically crack this */
 	
@@ -663,30 +763,53 @@ void mutate_data(uint8_t *buffer, size_t size, int mode){
 	
 	for(i=0;i<5;i++){
 		if(mode) {
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray8(buffer, size);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray16(buffer, size, 1);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray32(buffer, size, 1);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
+			nibbleswaparray64(buffer, size, 1);
+			xor_buffer(buffer, size);
+			
 			byteswaparray32(buffer, size, 1);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
+			byteswaparray64(buffer, size, 1);
+			xor_buffer(buffer, size);
+			
 			//debug_print_hex(buffer, size);
 		}
 		else {
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
+			byteswaparray64(buffer, size, 0);
+			xor_buffer(buffer, size);
+			
 			byteswaparray32(buffer, size, 0);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
+			nibbleswaparray64(buffer, size, 0);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray32(buffer, size, 0);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray16(buffer, size, 0);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			nibbleswaparray8(buffer, size);
-			xor4x(buffer, size);
+			xor_buffer(buffer, size);
+			
 			//debug_print_hex(buffer, size);
 		}
 	}
+
 }
 
 

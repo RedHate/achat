@@ -28,7 +28,7 @@
   * @param buffer    - buffer to be printed
   * @param size      - size in bytes
   */
-void debug_print_hex(uint8_t *buffer, uint32_t size);
+void debug_print_hex(uint8_t *buffer, size_t size);
 
 /**
   * Draw a waterfall audio wave effect to stdout

@@ -25,7 +25,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
-void debug_print_hex(uint8_t *buffer, uint32_t size) {
+void debug_print_hex(uint8_t *buffer, size_t size) {
 	int c;
 	for(c=0;c<size;c++) {
 		printf("%02hX,", *(uint8_t*)&buffer[c]);
