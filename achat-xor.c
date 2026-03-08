@@ -567,10 +567,10 @@ uint16_t nibbleswap16(uint16_t x, int mode){
 	// Check mode
 	if(mode)
 		// mode 1 (inversion of mode 2)
-		return (c<<0)|(a<<4)|(d<<8)|(b<<12);
+		return (a<<4)|(b<<12)|(c<<0)|(d<<8);
 	else
 		// mode 2 (inversion of mode 1)
-		return (b<<0)|(d<<4)|(a<<8)|(c<<12);
+		return (a<<8)|(b<<0)|(c<<12)|(d<<4);
 }
 
 void nibbleswaparray16(uint8_t *buffer, size_t size, int mode){
@@ -605,7 +605,7 @@ uint32_t nibbleswap32(uint32_t x, int mode){
 		return (a<<28)|(b<<16)|(c<<0)|(d<<8)|(e<<4)|(f<<12)|(g<<20)|(h<<24);
 	else
 		// mode 2 (inversion of mode 1)
-		return (h<<0)|(e<<4)|(a<<8)|(c<<12)|(b<<16)|(d<<20)|(f<<24)|(g<<28);
+		return (a<<8)|(b<<16)|(c<<12)|(d<<20)|(e<<4)|(f<<24)|(g<<28)|(h<<0);
 }
 
 void nibbleswaparray32(uint8_t *buffer, size_t size, int mode){
